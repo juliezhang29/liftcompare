@@ -1,0 +1,6 @@
+data/
+*.csv
+*.parquet
+.Rhistory
+.Rproj.user/
+renv/library/
