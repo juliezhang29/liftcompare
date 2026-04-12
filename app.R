@@ -156,7 +156,7 @@ ui = navbarPage(
       br(),
       
       h3("Inspiration"),
-      p("The idea to create this app came from countless discussions with fellow powerlifters about how powerlifting is largely a game of leverages (not to say other factors don't matter), and how interesting it is that different people can be good at just different lifts. I've found that observing other lifters techniques can be so helpful for your own training, but you really need to copy/find inspiration from people who are built like you."),
+      p("The idea to create this app came from countless discussions with fellow powerlifters about how powerlifting is largely a game of leverages (not to say other factors don't matter), and how interesting it is that different people can exceed at such different lifts. I've found that observing other lifters techniques can be so helpful for your own training, but you really need to copy/find inspiration from people who are built like you."),
       
       
       h3("What this app does"),
