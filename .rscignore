@@ -1,0 +1,12 @@
+data/openpowerlifting/
+data_sample/
+scripts/00_update_openpowerlifting_data.R
+scripts/01_build_snapshot.R
+.RData
+.Rhistory
+.Rprofile
+.git
+.gitignore
+README.md
+renv/
+rsconnect/

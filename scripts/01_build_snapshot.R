@@ -59,7 +59,7 @@ dt = dt[
 dt = dt[!is.na(BodyweightKg)]
 
 # Keep only federations you want available in the app
-dt = dt[Federation %in% c("IPF", "USAPL")]
+dt = dt[Federation %in% c("IPF", "AMP", "USAPL")]
 
 # Keep weight class as text so classes like "90+" stay distinct
 dt = dt[!is.na(WeightClassKg)]

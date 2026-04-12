@@ -2,7 +2,7 @@ library(data.table)
 library(arrow)
 
 get_class_table = function(sex, federation) {
-  if (federation == "IPF") {
+  if (federation %in% c("IPF", "PLA")) {
     if (sex == "M") {
       classes = c("59", "66", "74", "83", "93", "105", "120", "120+")
     } else if (sex == "F") {
@@ -14,12 +14,12 @@ get_class_table = function(sex, federation) {
     if (sex == "M") {
       classes = c("52", "56", "60", "67.5", "75", "82.5", "90", "100", "110", "125", "140", "140+")
     } else if (sex == "F") {
-      classes = c("44", "48", "52", "56", "60", "65", "70", "75", "82.5", "90", "100", "100+")
+      classes = c("44", "48", "52", "56", "60", "67.5", "75", "82.5", "90", "100", "100+")
     } else {
       stop("sex must be 'M' or 'F'.")
     }
   } else {
-    stop("federation must be 'IPF' or 'USAPL'.")
+    stop("federation must be 'IPF', 'PLA', or 'USAPL'.")
   }
   
   upper = as.numeric(gsub("\\+", "", classes))
@@ -74,10 +74,11 @@ match_lifters = function(
     deadlift,
     sex,
     selected_class,
-    federation = c("IPF", "USAPL", "both"),
+    federation = c("IPF/PLA", "USAPL", "both"),
     equipment = "Raw",
     top_n = 10,
-    elite_n = 50
+    elite_n = 50,
+    max_dist = NULL
 ) {
   federation = match.arg(federation)
   
@@ -105,77 +106,75 @@ match_lifters = function(
       !is.na(Dots)
   ]
   
-  if (federation != "both") {
-    dt = dt[Federation == federation]
+  if (federation == "IPF/PLA") {
+    dt = dt[Federation %in% c("IPF", "PLA")]
+  } else if (federation == "USAPL") {
+    dt = dt[Federation == "USAPL"]
   }
   
   if (nrow(dt) == 0) return(dt)
   
-  ipf_bounds = get_numeric_class_bounds(sex, "IPF", selected_class)
-  usapl_bounds = get_numeric_class_bounds(sex, "USAPL", selected_class)
-  
-  ipf_ok = rep(FALSE, nrow(dt))
-  usapl_ok = rep(FALSE, nrow(dt))
-  
-  if (!is.null(ipf_bounds)) {
-    if (ipf_bounds$is_plus) {
-      ipf_ok = dt$Federation == "IPF" & dt$BodyweightKg > ipf_bounds$lower
-    } else {
-      ipf_ok = dt$Federation == "IPF" &
-        dt$BodyweightKg > ipf_bounds$lower &
-        dt$BodyweightKg <= ipf_bounds$upper
+  if (!is.null(selected_class) && selected_class != "") {
+    ipf_bounds = get_numeric_class_bounds(sex, "IPF", selected_class)
+    usapl_bounds = get_numeric_class_bounds(sex, "USAPL", selected_class)
+    
+    ipf_ok = rep(FALSE, nrow(dt))
+    usapl_ok = rep(FALSE, nrow(dt))
+    
+    if (!is.null(ipf_bounds)) {
+      if (ipf_bounds$is_plus) {
+        ipf_ok = dt$Federation %in% c("IPF", "PLA") &
+          dt$BodyweightKg > ipf_bounds$lower
+      } else {
+        ipf_ok = dt$Federation %in% c("IPF", "PLA") &
+          dt$BodyweightKg > ipf_bounds$lower &
+          dt$BodyweightKg <= ipf_bounds$upper
+      }
     }
+    
+    if (!is.null(usapl_bounds)) {
+      if (usapl_bounds$is_plus) {
+        usapl_ok = dt$Federation == "USAPL" &
+          dt$BodyweightKg > usapl_bounds$lower
+      } else {
+        usapl_ok = dt$Federation == "USAPL" &
+          dt$BodyweightKg > usapl_bounds$lower &
+          dt$BodyweightKg <= usapl_bounds$upper
+      }
+    }
+    
+    dt = dt[ipf_ok | usapl_ok]
+    if (nrow(dt) == 0) return(dt)
   }
   
-  if (!is.null(usapl_bounds)) {
-    if (usapl_bounds$is_plus) {
-      usapl_ok = dt$Federation == "USAPL" & dt$BodyweightKg > usapl_bounds$lower
-    } else {
-      usapl_ok = dt$Federation == "USAPL" &
-        dt$BodyweightKg > usapl_bounds$lower &
-        dt$BodyweightKg <= usapl_bounds$upper
-    }
-  }
-  
-  dt = dt[ipf_ok | usapl_ok]
-  if (nrow(dt) == 0) return(dt)
-  
-  # -------------------------------
-  # ELITE FILTER (TOP N BY DOTS)
-  # -------------------------------
   setorder(dt, -Dots)
   dt = dt[1:min(elite_n, .N)]
   
-  # -------------------------------
-  # SIMILARITY
-  # -------------------------------
   user_vec = c(
     squat / user_total,
     bench / user_total,
     deadlift / user_total
   )
   
-  user_norm = sqrt(sum(user_vec^2))
+  dt[, dist := sqrt(
+    (p_s - user_vec[1])^2 +
+      (p_b - user_vec[2])^2 +
+      (p_d - user_vec[3])^2
+  )]
   
-  if ("prop_norm" %in% names(dt)) {
-    dt[, similarity := (
-      p_s * user_vec[1] +
-        p_b * user_vec[2] +
-        p_d * user_vec[3]
-    ) / (prop_norm * user_norm)]
-  } else {
-    dt[, similarity := (
-      p_s * user_vec[1] +
-        p_b * user_vec[2] +
-        p_d * user_vec[3]
-    ) / (sqrt(p_s^2 + p_b^2 + p_d^2) * user_norm)]
+  if (!is.null(max_dist)) {
+    dt = dt[dist <= max_dist]
   }
   
-  # -------------------------------
-  # FINAL RANK = SIMILARITY
-  # -------------------------------
-  setorder(dt, -similarity, -Dots)
+  if (nrow(dt) == 0) return(dt)
   
+  dt[, similarity := 1 / (1 + dist)]
+  dt[, pct_match := pmin(100, round(similarity * 100, 1))]
+  
+  setorder(dt, Name, -similarity, -Dots)
+  dt = dt[, .SD[1], by = Name]
+  
+  setorder(dt, -similarity, -Dots)
   dt = dt[1:min(top_n, .N)]
   dt[, rank := .I]
   
@@ -192,10 +191,37 @@ match_lifters = function(
       "Best3DeadliftKg",
       "TotalKg",
       "Dots",
-      "similarity"
+      "pct_match"
     ),
     names(dt)
   )
   
-  dt[, ..keep_cols]
+  result = dt[, ..keep_cols]
+  
+  setnames(
+    result,
+    old = c(
+      "WeightClassKg",
+      "BodyweightKg",
+      "Best3SquatKg",
+      "Best3BenchKg",
+      "Best3DeadliftKg",
+      "TotalKg",
+      "Dots",
+      "pct_match"
+    ),
+    new = c(
+      "Class",
+      "Bodyweight",
+      "Squat",
+      "Bench",
+      "Deadlift",
+      "Total",
+      "DOTS",
+      "Match %"
+    ),
+    skip_absent = TRUE
+  )
+  
+  result
 }
