@@ -4,3 +4,7 @@ data/
 .Rhistory
 .Rproj.user/
 renv/library/
+renv/
+rsconnect/
+.RData
+.Rhistory
